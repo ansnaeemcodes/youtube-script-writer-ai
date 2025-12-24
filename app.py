@@ -43,6 +43,14 @@ def parse_script(full_text):
     
     return clean_script, clean_scenes, word_count, duration_str
 
+def save_to_file(script_text):
+    if not script_text:
+        return None
+    file_path = "youtube_script.txt"
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(script_text)
+    return file_path
+
 def query_groq(topic, tone, duration, hook_strength, chat_history):
     if not GROQ_API_KEY:
         return "Error: GROQ_API_KEY not found in environment secrets. Please add it in Settings > Secrets.", "", "", 0, "0m 0s"
@@ -55,10 +63,8 @@ def query_groq(topic, tone, duration, hook_strength, chat_history):
     user_input = f"Topic: {topic}\nTone: {tone}\nTarget Duration: {duration}\nAction: Write a full YouTube script."
     
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    # Add history for context (optional but helpful)
-    for user, bot in chat_history[-3:]: # Keep last 3 exchanges to avoid context bloat
-        messages.append({"role": "user", "content": user})
-        messages.append({"role": "assistant", "content": bot})
+    # Add history for context (keep last 6 messages / 3 turns)
+    messages.extend(chat_history[-6:])
     
     messages.append({"role": "user", "content": user_input})
     
@@ -80,7 +86,8 @@ def query_groq(topic, tone, duration, hook_strength, chat_history):
 
 def respond(topic, tone, duration, hook_strength, chat_history):
     full_reply, tts_script, scenes, wc, dur = query_groq(topic, tone, duration, hook_strength, chat_history)
-    chat_history.append((topic, full_reply))
+    chat_history.append({"role": "user", "content": topic})
+    chat_history.append({"role": "assistant", "content": full_reply})
     return chat_history, tts_script, scenes, f"{wc} words", dur
 
 css = """
@@ -126,6 +133,8 @@ with gr.Blocks() as demo:
                 
                 with gr.TabItem("TTS Only (Dialogue)"):
                     tts_output = gr.Textbox(label="Copy this for Text-to-Speech", lines=20)
+                    download_btn = gr.Button("💾 Download Script (.txt)")
+                    download_file = gr.File(label="Download prepared file")
                 
                 with gr.TabItem("Visuals Only (Shot List)"):
                     scenes_output = gr.Textbox(label="Video Scene Descriptions", lines=20)
@@ -139,7 +148,13 @@ with gr.Blocks() as demo:
         [chatbot, tts_output, scenes_output, word_count_display, duration_display]
     )
     
-    clear.click(lambda: (None, "", "", "", "", []), None, [topic, chatbot, tts_output, scenes_output, word_count_display, duration_display])
+    download_btn.click(
+        save_to_file,
+        [tts_output],
+        [download_file]
+    )
+    
+    clear.click(lambda: (None, [], "", "", "", ""), None, [topic, chatbot, tts_output, scenes_output, word_count_display, duration_display])
 
 if __name__ == "__main__":
     demo.launch(theme=gr.themes.Soft(), css=css)

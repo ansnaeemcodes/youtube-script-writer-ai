@@ -6,7 +6,7 @@ import re
 # Load GROQ API key from environment
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-MODEL_NAME = "llama3-8b-8192"
+MODEL_NAME = "llama-3.1-8b-instant"
 
 SYSTEM_PROMPT = """You are 'ScriptForge AI', a professional YouTube Script Writer.
 Your goal is to write highly engaging, audience-first scripts in the 2nd person (using 'You', 'Your').

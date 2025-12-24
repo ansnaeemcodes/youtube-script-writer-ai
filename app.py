@@ -12,72 +12,68 @@ SYSTEM_PROMPT = """You are 'ScriptForge AI', a professional YouTube Script Write
 Your goal is to write highly engaging scripts in the 2nd person (using 'You', 'Your').
 
 FORMATTING RULES (STRICT):
-1. ONLY output content within [SCENE DESCRIPTION] and [SCRIPT] tags. 
-2. NO introduction text, NO "Here is your script", and NO titles outside the tags.
-3. [SCENE DESCRIPTION] is for visuals.
-4. [SCRIPT] is ONLY for the spoken dialogue. Do NOT include headings like "Hook:", "Intro:", or "CTA:" inside the [SCRIPT] tag.
-5. Talk directly to the audience.
+1. Use ONLY these two tags: [VISUAL] for scenes, and [AUDIO] for spoken words.
+2. [VISUAL]: Describe the visuals, camera shots, or on-screen text.
+3. [AUDIO]: Write ONLY the spoken words. No actor directions, no "Host:", no markdown headers.
+4. Do not output any intro text. Start directly with a [VISUAL] or [AUDIO] tag.
+5. Example:
+   [VISUAL]
+   Wide shot of a clear blue sky.
+   [AUDIO]
+   Today is going to be amazing.
 """
 
 def parse_script(full_text):
-    # Use regular expression to find all instances of the tags
-    # This pattern matches [SCRIPT] or [SCENE DESCRIPTION] with optional brackets and colons
-    tag_pattern = r'(\[?(?:SCRIPT|SCENE DESCRIPTION)\]?:?)'
+    # Normalize tags just in case
+    full_text = re.sub(r'\[?(?:SCENE DESCRIPTION|SCENE|VISUALS)\]?:?', '[VISUAL]', full_text, flags=re.IGNORECASE)
+    full_text = re.sub(r'\[?(?:SCRIPT|NARRATION|AUDIO)\]?:?', '[AUDIO]', full_text, flags=re.IGNORECASE)
     
-    # Split the text by the tags
-    parts = re.split(tag_pattern, full_text, flags=re.IGNORECASE)
+    # Split by tags
+    parts = re.split(r'(\[(?:VISUAL|AUDIO)\])', full_text, flags=re.IGNORECASE)
     
-    clean_script = []
-    clean_scenes = []
+    clean_audio = []
+    clean_visuals = []
     
     current_tag = None
     
     for part in parts:
-        lower_part = part.lower().strip()
-        
-        # Check if the current part is a tag
-        if "script" in lower_part and ("[" in lower_part or "script" == lower_part.strip("[]:")):
-            current_tag = "SCRIPT"
-        elif "scene" in lower_part and ("[" in lower_part or "scene" in lower_part.strip("[]:")):
-            current_tag = "SCENE"
-        elif current_tag:
-            # This is the content following a tag
-            content = part.strip()
-            if not content:
-                continue
-                
-            if current_tag == "SCRIPT":
-                # Agressive cleaning for TTS:
-                # 1. Remove markdown headers
-                content = re.sub(r'^#+.*$', '', content, flags=re.MULTILINE)
-                # 2. Remove common metadata labels at the start of lines
-                content = re.sub(r'^(Hook|Intro|Body|CTA|Conclusion|Outro|Segment|Step \d+):\s*', '', content, flags=re.IGNORECASE | re.MULTILINE)
-                # 3. Remove text in parentheses (visual cues/directions)
-                content = re.sub(r'\(.*?\)', '', content, flags=re.DOTALL)
-                # 4. Remove brackets like [Upbeat Music] that might be inside a script tag
-                content = re.sub(r'\[.*?\]', '', content, flags=re.DOTALL)
-                # 5. Remove bolding/formatting
-                content = content.replace("**", "").replace("*", "").replace("__", "")
-                
-                final_content = content.strip()
-                if final_content:
-                    clean_script.append(final_content)
+        part = part.strip()
+        if not part:
+            continue
             
-            elif current_tag == "SCENE":
-                clean_scenes.append(content)
-    
-    # Join the cleaned parts
-    script_text = "\n\n".join(clean_script)
-    scenes_text = "\n\n".join(clean_scenes)
-    
-    # Final cleanup of the script text to ensure no lingering "ION]" or empty lines
-    script_text = re.sub(r'^ION\]\s*', '', script_text, flags=re.IGNORECASE | re.MULTILINE)
-    
-    # Fallback: if no script was found, use the clean version of the full text
-    if not script_text and full_text:
-        script_text = re.sub(r'\[.*?\]', '', full_text, flags=re.DOTALL).strip()
+        if part.upper() == "[AUDIO]":
+            current_tag = "AUDIO"
+        elif part.upper() == "[VISUAL]":
+            current_tag = "VISUAL"
+        elif current_tag == "AUDIO":
+            # Clean Audio
+            # Remove parenthetical notes like (whispering)
+            content = re.sub(r'\(.*?\)', '', part, flags=re.DOTALL)
+            # Remove headers
+            content = re.sub(r'^#+.*$', '', content, flags=re.MULTILINE)
+            # Remove labels like "Host:"
+            content = re.sub(r'^\w+:\s*', '', content, flags=re.MULTILINE)
+            # Remove formatting
+            content = content.replace("**", "").replace("*", "")
+            
+            if content.strip():
+                clean_audio.append(content.strip())
+                
+        elif current_tag == "VISUAL":
+            clean_visuals.append(part.strip())
+            
+    # Fallback: If no tags found, attempt heuristic split
+    if not clean_audio and not clean_visuals:
+        lines = full_text.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line: continue
+            if line.startswith('(') or line.startswith('[') or "EXT." in line or "INT." in line:
+                clean_visuals.append(line)
+            else:
+                clean_audio.append(line)
 
-    return script_text, scenes_text
+    return "\n\n".join(clean_audio), "\n\n".join(clean_visuals)
 
 def save_to_file(script_text):
     if not script_text:

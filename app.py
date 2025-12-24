@@ -9,34 +9,41 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL_NAME = "llama-3.1-8b-instant"
 
 SYSTEM_PROMPT = """You are 'ScriptForge AI', a professional YouTube Script Writer.
-Your goal is to write highly engaging, audience-first scripts in the 2nd person (using 'You', 'Your').
-Talk directly to the viewer as if you are the creator speaking to the camera.
+Your goal is to write highly engaging scripts in the 2nd person (using 'You', 'Your').
 
-FORMATTING RULES:
-1. Every script must alternate between [SCENE DESCRIPTION] and [SCRIPT].
-2. [SCENE DESCRIPTION] should describe the visuals, camera angles, or B-roll.
-3. [SCRIPT] should be the actual spoken words.
-4. Structure the script with a Hook, Intro, Main Points, and a Call to Action (CTA).
-5. Maintain the requested Tone and Duration.
-
-Example:
-[SCENE DESCRIPTION]: Close-up of the product.
-[SCRIPT]: You need to see this to believe it.
+FORMATTING RULES (STRICT):
+1. ONLY output content within [SCENE DESCRIPTION] and [SCRIPT] tags. 
+2. NO introduction text, NO "Here is your script", and NO titles outside the tags.
+3. [SCENE DESCRIPTION] is for visuals.
+4. [SCRIPT] is ONLY for the spoken dialogue. Do NOT include headings like "Hook:", "Intro:", or "CTA:" inside the [SCRIPT] tag.
+5. Talk directly to the audience.
 """
 
 def parse_script(full_text):
-    # Improved regex: Handles optional colons, bolding (**), and case variations
-    # Extract [SCRIPT] parts
+    # 1. Extract [SCRIPT] segments
     script_parts = re.findall(r'\[?SCRIPT\]?:?\s*(.*?)(?=\[?SCENE DESCRIPTION\]?|$)', full_text, re.DOTALL | re.IGNORECASE)
-    clean_script = "\n".join([p.strip().replace("**", "") for p in script_parts if p.strip()])
     
-    # Extract [SCENE DESCRIPTION] parts
+    cleaned_dialogue = []
+    for part in script_parts:
+        # Remove markdown headers (e.g., ### Hook)
+        clean = re.sub(r'^#+.*$', '', part, flags=re.MULTILINE)
+        # Remove bolding/italics
+        clean = clean.replace("**", "").replace("*", "").replace("__", "")
+        # Remove common metadata words/colons at start of lines (e.g., "Hook:", "Intro:")
+        clean = re.sub(r'^(Hook|Intro|Body|CTA|Conclusion|Outro):\s*', '', clean, flags=re.IGNORECASE | re.MULTILINE).strip()
+        if clean:
+            cleaned_dialogue.append(clean)
+            
+    clean_script = "\n\n".join(cleaned_dialogue)
+    
+    # 2. Extract [SCENE DESCRIPTION] segments
     scene_parts = re.findall(r'\[?SCENE DESCRIPTION\]?:?\s*(.*?)(?=\[?SCRIPT\]?|$)', full_text, re.DOTALL | re.IGNORECASE)
     clean_scenes = "\n".join([p.strip().replace("**", "") for p in scene_parts if p.strip()])
     
-    # Fallback: If parsing fails but we have text, assume the whole thing is the script
+    # Fallback
     if not clean_script and full_text:
-        clean_script = full_text
+        # If no tags, try to strip common AI intro fluff
+        clean_script = re.sub(r'^(Here is|Sure|Okay|I can help|Youtube Script).*?$', '', full_text, flags=re.IGNORECASE | re.MULTILINE).strip()
         
     return clean_script, clean_scenes
 

@@ -3,7 +3,7 @@ import os
 import requests
 import re
 
-# Load GROQ API key from environment
+
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL_NAME = "llama-3.1-8b-instant"
@@ -25,23 +25,15 @@ Example:
 """
 
 def parse_script(full_text):
-    # Extract [SCRIPT] parts for TTS
+  
     script_parts = re.findall(r'\[SCRIPT\]:(.*?)(?=\[SCENE DESCRIPTION\]|$)', full_text, re.DOTALL | re.IGNORECASE)
     clean_script = "\n".join([p.strip() for p in script_parts])
     
-    # Extract [SCENE DESCRIPTION] parts for Visuals
+   
     scene_parts = re.findall(r'\[SCENE DESCRIPTION\]:(.*?)(?=\[SCRIPT\]|$)', full_text, re.DOTALL | re.IGNORECASE)
     clean_scenes = "\n".join([p.strip() for p in scene_parts])
     
-    # Calculate stats
-    word_count = len(clean_script.split())
-    # Est duration: ~150 words per minute
-    duration_minutes = word_count / 150
-    minutes = int(duration_minutes)
-    seconds = int((duration_minutes - minutes) * 60)
-    duration_str = f"{minutes}m {seconds}s"
-    
-    return clean_script, clean_scenes, word_count, duration_str
+    return clean_script, clean_scenes
 
 def save_to_file(script_text):
     if not script_text:
@@ -53,7 +45,7 @@ def save_to_file(script_text):
 
 def query_groq(topic, tone, duration, hook_strength, chat_history):
     if not GROQ_API_KEY:
-        return "Error: GROQ_API_KEY not found in environment secrets. Please add it in Settings > Secrets.", "", "", 0, "0m 0s"
+        return "Error: GROQ_API_KEY not found in environment secrets. Please add it in Settings > Secrets.", "", ""
 
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -63,7 +55,7 @@ def query_groq(topic, tone, duration, hook_strength, chat_history):
     user_input = f"Topic: {topic}\nTone: {tone}\nTarget Duration: {duration}\nAction: Write a full YouTube script."
     
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    # Add history for context (keep last 6 messages / 3 turns)
+    
     messages.extend(chat_history[-6:])
     
     messages.append({"role": "user", "content": user_input})
@@ -77,28 +69,16 @@ def query_groq(topic, tone, duration, hook_strength, chat_history):
         
         if response.status_code == 200:
             full_reply = response.json()["choices"][0]["message"]["content"]
-            tts_script, scenes, wc, dur = parse_script(full_reply)
-            return full_reply, tts_script, scenes, wc, dur
+            tts_script, scenes = parse_script(full_reply)
+            return full_reply, tts_script, scenes
         else:
-            return f"Error {response.status_code}: {response.text}", "", "", 0, "0m 0s"
+            return f"Error {response.status_code}: {response.text}", "", ""
     except Exception as e:
-        return f"Request failed: {str(e)}", "", "", 0, "0m 0s"
+        return f"Request failed: {str(e)}", "", ""
 
-def respond(topic, tone, duration, hook_strength, chat_history):
-    full_reply, tts_script, scenes, wc, dur = query_groq(topic, tone, duration, hook_strength, chat_history)
-    chat_history.append({"role": "user", "content": topic})
-    chat_history.append({"role": "assistant", "content": full_reply})
-    return chat_history, tts_script, scenes, f"{wc} words", dur
 
 css = """
 footer {visibility: hidden}
-.stat-box { 
-    background-color: #f0f2f6; 
-    padding: 10px; 
-    border-radius: 10px; 
-    text-align: center;
-    border: 1px solid #ddd;
-}
 """
 
 with gr.Blocks() as demo:
@@ -123,13 +103,12 @@ with gr.Blocks() as demo:
             clear = gr.Button("Clear")
 
         with gr.Column(scale=2):
-            with gr.Row():
-                word_count_display = gr.Textbox(label="Word Count", interactive=False, elem_classes="stat-box")
-                duration_display = gr.Textbox(label="Est. Speaking Time", interactive=False, elem_classes="stat-box")
-            
             with gr.Tabs():
                 with gr.TabItem("Combined View"):
-                    chatbot = gr.Chatbot(height=500)
+                    chatbot = gr.Chatbot(
+                        value=[{"role": "assistant", "content": "Hi, my name is Script Forge: your YouTube script writer. Give me a topic so I can show my creativity."}],
+                        height=500
+                    )
                 
                 with gr.TabItem("TTS Only (Dialogue)"):
                     tts_output = gr.Textbox(label="Copy this for Text-to-Speech", lines=20)
@@ -139,13 +118,19 @@ with gr.Blocks() as demo:
                 with gr.TabItem("Visuals Only (Shot List)"):
                     scenes_output = gr.Textbox(label="Video Scene Descriptions", lines=20)
 
-    # State for history
-    state = gr.State([])
+  
+    state = gr.State([{"role": "assistant", "content": "Hi, my name is Script Forge: your YouTube script writer. Give me a topic so I can show my creativity."}])
+
+    def respond_wrapper(topic, tone, duration, hook_strength, chat_history):
+        full_reply, tts_script, scenes = query_groq(topic, tone, duration, hook_strength, chat_history)
+        chat_history.append({"role": "user", "content": topic})
+        chat_history.append({"role": "assistant", "content": full_reply})
+        return chat_history, tts_script, scenes
 
     generate_btn.click(
-        respond, 
+        respond_wrapper, 
         [topic, tone, duration, hook_strength, state], 
-        [chatbot, tts_output, scenes_output, word_count_display, duration_display]
+        [chatbot, tts_output, scenes_output]
     )
     
     download_btn.click(
@@ -154,7 +139,11 @@ with gr.Blocks() as demo:
         [download_file]
     )
     
-    clear.click(lambda: (None, [], "", "", "", ""), None, [topic, chatbot, tts_output, scenes_output, word_count_display, duration_display])
+    clear.click(
+        lambda: (None, [{"role": "assistant", "content": "Hi, my name is Script Forge: your YouTube script writer. Give me a topic so I can show my creativity."}], "", "", None), 
+        None, 
+        [topic, chatbot, tts_output, scenes_output, download_file]
+    )
 
 if __name__ == "__main__":
     demo.launch(theme=gr.themes.Soft(), css=css)

@@ -94,7 +94,7 @@ footer {visibility: hidden}
 }
 """
 
-with gr.Blocks(theme=gr.themes.Soft(), css=css) as demo:
+with gr.Blocks() as demo:
     gr.Markdown("# 🎬 ScriptForge AI: YouTube Script Master")
     gr.Markdown("Transform your video ideas into high-retention, audience-first scripts. *Powered by GROQ*")
     
@@ -125,7 +125,7 @@ with gr.Blocks(theme=gr.themes.Soft(), css=css) as demo:
                     chatbot = gr.Chatbot(height=500)
                 
                 with gr.TabItem("TTS Only (Dialogue)"):
-                    tts_output = gr.Textbox(label="Copy this for Text-to-Speech", show_copy_button=True, lines=20)
+                    tts_output = gr.Textbox(label="Copy this for Text-to-Speech", lines=20)
                 
                 with gr.TabItem("Visuals Only (Shot List)"):
                     scenes_output = gr.Textbox(label="Video Scene Descriptions", lines=20)
@@ -142,4 +142,4 @@ with gr.Blocks(theme=gr.themes.Soft(), css=css) as demo:
     clear.click(lambda: (None, "", "", "", "", []), None, [topic, chatbot, tts_output, scenes_output, word_count_display, duration_display])
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(theme=gr.themes.Soft(), css=css)

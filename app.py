@@ -3,7 +3,7 @@ import os
 import requests
 import re
 
-
+# Load GROQ API key from environment
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL_NAME = "llama-3.1-8b-instant"
@@ -25,14 +25,19 @@ Example:
 """
 
 def parse_script(full_text):
-  
-    script_parts = re.findall(r'\[SCRIPT\]:(.*?)(?=\[SCENE DESCRIPTION\]|$)', full_text, re.DOTALL | re.IGNORECASE)
-    clean_script = "\n".join([p.strip() for p in script_parts])
+    # Improved regex: Handles optional colons, bolding (**), and case variations
+    # Extract [SCRIPT] parts
+    script_parts = re.findall(r'\[?SCRIPT\]?:?\s*(.*?)(?=\[?SCENE DESCRIPTION\]?|$)', full_text, re.DOTALL | re.IGNORECASE)
+    clean_script = "\n".join([p.strip().replace("**", "") for p in script_parts if p.strip()])
     
-   
-    scene_parts = re.findall(r'\[SCENE DESCRIPTION\]:(.*?)(?=\[SCRIPT\]|$)', full_text, re.DOTALL | re.IGNORECASE)
-    clean_scenes = "\n".join([p.strip() for p in scene_parts])
+    # Extract [SCENE DESCRIPTION] parts
+    scene_parts = re.findall(r'\[?SCENE DESCRIPTION\]?:?\s*(.*?)(?=\[?SCRIPT\]?|$)', full_text, re.DOTALL | re.IGNORECASE)
+    clean_scenes = "\n".join([p.strip().replace("**", "") for p in scene_parts if p.strip()])
     
+    # Fallback: If parsing fails but we have text, assume the whole thing is the script
+    if not clean_script and full_text:
+        clean_script = full_text
+        
     return clean_script, clean_scenes
 
 def save_to_file(script_text):
@@ -55,7 +60,7 @@ def query_groq(topic, tone, duration, hook_strength, chat_history):
     user_input = f"Topic: {topic}\nTone: {tone}\nTarget Duration: {duration}\nAction: Write a full YouTube script."
     
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    
+    # Add history for context (keep last 6 messages / 3 turns)
     messages.extend(chat_history[-6:])
     
     messages.append({"role": "user", "content": user_input})
@@ -118,7 +123,7 @@ with gr.Blocks() as demo:
                 with gr.TabItem("Visuals Only (Shot List)"):
                     scenes_output = gr.Textbox(label="Video Scene Descriptions", lines=20)
 
-  
+    # State for history (initially contains the welcome message)
     state = gr.State([{"role": "assistant", "content": "Hi, my name is Script Forge: your YouTube script writer. Give me a topic so I can show my creativity."}])
 
     def respond_wrapper(topic, tone, duration, hook_strength, chat_history):

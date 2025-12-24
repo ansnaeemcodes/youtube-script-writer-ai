@@ -3,7 +3,7 @@ import os
 import requests
 import re
 
-# Load GROQ API key from environment
+
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL_NAME = "llama-3.1-8b-instant"
@@ -24,11 +24,11 @@ FORMATTING RULES (STRICT):
 """
 
 def parse_script(full_text):
-    # Normalize tags just in case
+   
     full_text = re.sub(r'\[?(?:SCENE DESCRIPTION|SCENE|VISUALS)\]?:?', '[VISUAL]', full_text, flags=re.IGNORECASE)
     full_text = re.sub(r'\[?(?:SCRIPT|NARRATION|AUDIO)\]?:?', '[AUDIO]', full_text, flags=re.IGNORECASE)
     
-    # Split by tags
+
     parts = re.split(r'(\[(?:VISUAL|AUDIO)\])', full_text, flags=re.IGNORECASE)
     
     clean_audio = []
@@ -46,14 +46,13 @@ def parse_script(full_text):
         elif part.upper() == "[VISUAL]":
             current_tag = "VISUAL"
         elif current_tag == "AUDIO":
-            # Clean Audio
-            # Remove parenthetical notes like (whispering)
+           
             content = re.sub(r'\(.*?\)', '', part, flags=re.DOTALL)
-            # Remove headers
+          
             content = re.sub(r'^#+.*$', '', content, flags=re.MULTILINE)
-            # Remove labels like "Host:"
+           
             content = re.sub(r'^\w+:\s*', '', content, flags=re.MULTILINE)
-            # Remove formatting
+         
             content = content.replace("**", "").replace("*", "")
             
             if content.strip():
@@ -62,7 +61,7 @@ def parse_script(full_text):
         elif current_tag == "VISUAL":
             clean_visuals.append(part.strip())
             
-    # Fallback: If no tags found, attempt heuristic split
+   
     if not clean_audio and not clean_visuals:
         lines = full_text.split('\n')
         for line in lines:
@@ -95,7 +94,7 @@ def query_groq(topic, tone, duration, hook_strength, chat_history):
     user_input = f"Topic: {topic}\nTone: {tone}\nTarget Duration: {duration}\nAction: Write a full YouTube script."
     
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    # Add history for context (keep last 6 messages / 3 turns)
+   
     messages.extend(chat_history[-6:])
     
     messages.append({"role": "user", "content": user_input})
@@ -158,7 +157,7 @@ with gr.Blocks() as demo:
                 with gr.TabItem("Visuals Only (Shot List)"):
                     scenes_output = gr.Textbox(label="Video Scene Descriptions", lines=20)
 
-    # State for history (initially contains the welcome message)
+  
     state = gr.State([{"role": "assistant", "content": "Hi, my name is Script Forge: your YouTube script writer. Give me a topic so I can show my creativity."}])
 
     def respond_wrapper(topic, tone, duration, hook_strength, chat_history):

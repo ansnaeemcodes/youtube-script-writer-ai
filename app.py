@@ -20,32 +20,64 @@ FORMATTING RULES (STRICT):
 """
 
 def parse_script(full_text):
-    # 1. Extract [SCRIPT] segments
-    script_parts = re.findall(r'\[?SCRIPT\]?:?\s*(.*?)(?=\[?SCENE DESCRIPTION\]?|$)', full_text, re.DOTALL | re.IGNORECASE)
+    # Use regular expression to find all instances of the tags
+    # This pattern matches [SCRIPT] or [SCENE DESCRIPTION] with optional brackets and colons
+    tag_pattern = r'(\[?(?:SCRIPT|SCENE DESCRIPTION)\]?:?)'
     
-    cleaned_dialogue = []
-    for part in script_parts:
-        # Remove markdown headers (e.g., ### Hook)
-        clean = re.sub(r'^#+.*$', '', part, flags=re.MULTILINE)
-        # Remove bolding/italics
-        clean = clean.replace("**", "").replace("*", "").replace("__", "")
-        # Remove common metadata words/colons at start of lines (e.g., "Hook:", "Intro:")
-        clean = re.sub(r'^(Hook|Intro|Body|CTA|Conclusion|Outro):\s*', '', clean, flags=re.IGNORECASE | re.MULTILINE).strip()
-        if clean:
-            cleaned_dialogue.append(clean)
-            
-    clean_script = "\n\n".join(cleaned_dialogue)
+    # Split the text by the tags
+    parts = re.split(tag_pattern, full_text, flags=re.IGNORECASE)
     
-    # 2. Extract [SCENE DESCRIPTION] segments
-    scene_parts = re.findall(r'\[?SCENE DESCRIPTION\]?:?\s*(.*?)(?=\[?SCRIPT\]?|$)', full_text, re.DOTALL | re.IGNORECASE)
-    clean_scenes = "\n".join([p.strip().replace("**", "") for p in scene_parts if p.strip()])
+    clean_script = []
+    clean_scenes = []
     
-    # Fallback
-    if not clean_script and full_text:
-        # If no tags, try to strip common AI intro fluff
-        clean_script = re.sub(r'^(Here is|Sure|Okay|I can help|Youtube Script).*?$', '', full_text, flags=re.IGNORECASE | re.MULTILINE).strip()
+    current_tag = None
+    
+    for part in parts:
+        lower_part = part.lower().strip()
         
-    return clean_script, clean_scenes
+        # Check if the current part is a tag
+        if "script" in lower_part and ("[" in lower_part or "script" == lower_part.strip("[]:")):
+            current_tag = "SCRIPT"
+        elif "scene" in lower_part and ("[" in lower_part or "scene" in lower_part.strip("[]:")):
+            current_tag = "SCENE"
+        elif current_tag:
+            # This is the content following a tag
+            content = part.strip()
+            if not content:
+                continue
+                
+            if current_tag == "SCRIPT":
+                # Agressive cleaning for TTS:
+                # 1. Remove markdown headers
+                content = re.sub(r'^#+.*$', '', content, flags=re.MULTILINE)
+                # 2. Remove common metadata labels at the start of lines
+                content = re.sub(r'^(Hook|Intro|Body|CTA|Conclusion|Outro|Segment|Step \d+):\s*', '', content, flags=re.IGNORECASE | re.MULTILINE)
+                # 3. Remove text in parentheses (visual cues/directions)
+                content = re.sub(r'\(.*?\)', '', content, flags=re.DOTALL)
+                # 4. Remove brackets like [Upbeat Music] that might be inside a script tag
+                content = re.sub(r'\[.*?\]', '', content, flags=re.DOTALL)
+                # 5. Remove bolding/formatting
+                content = content.replace("**", "").replace("*", "").replace("__", "")
+                
+                final_content = content.strip()
+                if final_content:
+                    clean_script.append(final_content)
+            
+            elif current_tag == "SCENE":
+                clean_scenes.append(content)
+    
+    # Join the cleaned parts
+    script_text = "\n\n".join(clean_script)
+    scenes_text = "\n\n".join(clean_scenes)
+    
+    # Final cleanup of the script text to ensure no lingering "ION]" or empty lines
+    script_text = re.sub(r'^ION\]\s*', '', script_text, flags=re.IGNORECASE | re.MULTILINE)
+    
+    # Fallback: if no script was found, use the clean version of the full text
+    if not script_text and full_text:
+        script_text = re.sub(r'\[.*?\]', '', full_text, flags=re.DOTALL).strip()
+
+    return script_text, scenes_text
 
 def save_to_file(script_text):
     if not script_text:
